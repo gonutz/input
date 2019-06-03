@@ -272,3 +272,19 @@ func PressKey(key uint16) error {
 	}
 	return nil
 }
+
+// ForegroundWindowTitle returns the title of the window that currently has the
+// focus. The desktop window usually has title "".
+func ForegroundWindowTitle() string {
+	return w32.GetWindowText(w32.GetForegroundWindow())
+}
+
+// ForegroundWindowClassName returns the class name of the window that currently
+// has the focus.
+func ForegroundWindowClassName() string {
+	name, ok := w32.GetClassName(w32.GetForegroundWindow())
+	if ok {
+		return name
+	}
+	return ""
+}
