@@ -151,12 +151,26 @@ func MoveMouseBy(dx, dy int) error {
 	return nil
 }
 
-// LeftDoubleClick moves the mouse to screen coordinates x,y and clicks the left
-// mouse button twice.
-func LeftDoubleClick(x, y int) error {
+// LeftDoubleClickAt moves the mouse to screen coordinates x,y and clicks the
+// left mouse button twice.
+func LeftDoubleClickAt(x, y int) error {
 	if !w32.SetCursorPos(x, y) {
 		return ErrSetCursorFailed
 	}
+	n := w32.SendInput(
+		w32.MouseInput(w32.MOUSEINPUT{Flags: w32.MOUSEEVENTF_LEFTDOWN}),
+		w32.MouseInput(w32.MOUSEINPUT{Flags: w32.MOUSEEVENTF_LEFTUP}),
+		w32.MouseInput(w32.MOUSEINPUT{Flags: w32.MOUSEEVENTF_LEFTDOWN}),
+		w32.MouseInput(w32.MOUSEINPUT{Flags: w32.MOUSEEVENTF_LEFTUP}),
+	)
+	if n == 0 {
+		return ErrBlocked
+	}
+	return nil
+}
+
+// LeftDoubleClick clicks the left mouse button twice.
+func LeftDoubleClick() error {
 	n := w32.SendInput(
 		w32.MouseInput(w32.MOUSEINPUT{Flags: w32.MOUSEEVENTF_LEFTDOWN}),
 		w32.MouseInput(w32.MOUSEINPUT{Flags: w32.MOUSEEVENTF_LEFTUP}),
