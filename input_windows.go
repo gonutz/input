@@ -239,3 +239,22 @@ func KeyUp(key uint16) error {
 	}
 	return nil
 }
+
+// PressKey presses and releases the given key on the keyboard. The value must
+// be a virtual keycode like 'A', '1' or VK_RETURN (you can use the constants in
+// github.com/gonutz/w32 VK_...).
+func PressKey(key uint16) error {
+	n := w32.SendInput(
+		w32.KeyboardInput(w32.KEYBDINPUT{
+			Vk: key,
+		}),
+		w32.KeyboardInput(w32.KEYBDINPUT{
+			Vk:    key,
+			Flags: w32.KEYEVENTF_KEYUP,
+		}),
+	)
+	if n == 0 {
+		return ErrBlocked
+	}
+	return nil
+}
