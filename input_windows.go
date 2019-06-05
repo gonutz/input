@@ -3,7 +3,9 @@ package input
 import (
 	"errors"
 	"strings"
+	"syscall"
 	"unicode"
+	"unsafe"
 
 	"github.com/gonutz/w32"
 )
@@ -287,4 +289,43 @@ func ForegroundWindowClassName() string {
 		return name
 	}
 	return ""
+}
+
+// ClipboardText returns the contents of the clipboard as text. If the clipboard
+// is empty or does not contain text it returns "".
+func ClipboardText() string {
+	var text string
+	if w32.OpenClipboard(0) {
+		defer w32.CloseClipboard()
+		data := (*uint16)(unsafe.Pointer(w32.GetClipboardData(w32.CF_UNICODETEXT)))
+		if data != nil {
+			var characters []uint16
+			for *data != 0 {
+				characters = append(characters, *data)
+				data = (*uint16)(unsafe.Pointer(uintptr(unsafe.Pointer(data)) + 2))
+			}
+			text = syscall.UTF16ToString(characters)
+		}
+	}
+	return text
+}
+
+// SetClipboardText sets the contents of the clipboard to the given string.
+func SetClipboardText(text string) {
+	if w32.OpenClipboard(0) {
+		w32.EmptyClipboard()
+		data := syscall.StringToUTF16(text)
+		clipBuffer := w32.GlobalAlloc(w32.GMEM_DDESHARE, uint32(len(data)*2))
+		w32.MoveMemory(
+			w32.GlobalLock(clipBuffer),
+			unsafe.Pointer(&data[0]),
+			uint32(len(data)*2),
+		)
+		w32.GlobalUnlock(clipBuffer)
+		w32.SetClipboardData(
+			w32.CF_UNICODETEXT,
+			w32.HANDLE(unsafe.Pointer(clipBuffer)),
+		)
+		w32.CloseClipboard()
+	}
 }
