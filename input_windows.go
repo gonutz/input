@@ -1,10 +1,10 @@
 package input
 
 import (
-	"errors"
+	"fmt"
 	"strings"
 	"syscall"
-	"unicode"
+	"time"
 	"unsafe"
 
 	"github.com/gonutz/w32/v2"
@@ -185,48 +185,80 @@ func LeftDoubleClick() error {
 	return nil
 }
 
-// Type will write the given text by sequentially pressing its keys. Valid
-// inputs are characters [a..z] and [A..Z], digits [0..9], spaces ' ', line
-// breaks '\n', '\r' or "\r\n" and the backspace character '\b'.
+// Type will write the given text using Alt+Numpad numbers. It will sleep the
+// smallest, non-0 delay between two letters.
 func Type(s string) error {
+	return TypeWithDelay(s, 1)
+}
+
+// TypeWithDelay will write the given text using Alt+Numpad numbers. It will
+// sleep the given delay between two letters.
+func TypeWithDelay(s string, delay time.Duration) error {
+	toScanCode := func(vk uint) uint16 {
+		return uint16(w32.MapVirtualKey(vk, w32.MAPVK_VK_TO_VSC))
+	}
+
+	const (
+		down = 0
+		up   = 1
+	)
+
+	upDown := func(vk uint) [2]w32.INPUT {
+		return [2]w32.INPUT{
+			down: w32.KeyboardInput(w32.KEYBDINPUT{
+				Scan:  toScanCode(vk),
+				Flags: w32.KEYEVENTF_SCANCODE,
+			}),
+
+			up: w32.KeyboardInput(w32.KEYBDINPUT{
+				Scan:  toScanCode(vk),
+				Flags: w32.KEYEVENTF_SCANCODE | w32.KEYEVENTF_KEYUP,
+			}),
+		}
+	}
+
+	alt := upDown(w32.VK_LMENU)
+	nums := [][2]w32.INPUT{
+		upDown(w32.VK_NUMPAD0),
+		upDown(w32.VK_NUMPAD1),
+		upDown(w32.VK_NUMPAD2),
+		upDown(w32.VK_NUMPAD3),
+		upDown(w32.VK_NUMPAD4),
+		upDown(w32.VK_NUMPAD5),
+		upDown(w32.VK_NUMPAD6),
+		upDown(w32.VK_NUMPAD7),
+		upDown(w32.VK_NUMPAD8),
+		upDown(w32.VK_NUMPAD9),
+	}
+
+	keys := []w32.INPUT{alt[down], nums[0][down], nums[0][up]}
+
 	// Unify line breaks to '\r' which is the virtual key code for VK_RETURN.
 	s = strings.Replace(s, "\r\n", "\r", -1)
 	s = strings.Replace(s, "\n", "\r", -1)
 
-	// Predefine shift keys, we might need them more than once.
-	shiftDown := w32.KeyboardInput(w32.KEYBDINPUT{
-		Vk: w32.VK_LSHIFT,
-	})
-	shiftUp := w32.KeyboardInput(w32.KEYBDINPUT{
-		Vk:    w32.VK_LSHIFT,
-		Flags: w32.KEYEVENTF_KEYUP,
-	})
-
-	var events []w32.INPUT
-	for _, key := range s {
-		shift := unicode.IsUpper(key)
-		r := unicode.ToUpper(key)
-		if !(r == ' ' || r == '\n' || r == '\r' || r == '\b' ||
-			'0' <= r && r <= '9' ||
-			'A' <= r && r <= 'Z') {
-			return errors.New("input.Type: invalid key in string: '" + string(key) + "'")
-		}
-		down := w32.KeyboardInput(w32.KEYBDINPUT{
-			Vk: uint16(r),
-		})
-		up := w32.KeyboardInput(w32.KEYBDINPUT{
-			Vk:    uint16(r),
-			Flags: w32.KEYEVENTF_KEYUP,
-		})
-		if shift {
-			events = append(events, shiftDown, down, up, shiftUp)
+	for _, r := range s {
+		if r == '\r' {
+			if err := PressKey(w32.VK_RETURN); err != nil {
+				return err
+			}
+		} else if r == '\b' {
+			if err := PressKey(w32.VK_BACK); err != nil {
+				return err
+			}
 		} else {
-			events = append(events, down, up)
+			keys = keys[:3] // Keep Alt down and type 0.
+			for _, digit := range fmt.Sprint(int(r)) {
+				d := digit - '0'
+				keys = append(keys, nums[d][down], nums[d][up])
+			}
+			keys = append(keys, alt[up])
+
+			if w32.SendInput(keys...) == 0 {
+				return ErrBlocked
+			}
 		}
-	}
-	n := w32.SendInput(events...)
-	if n == 0 {
-		return ErrBlocked
+		time.Sleep(delay)
 	}
 	return nil
 }
